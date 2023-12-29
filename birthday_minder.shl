@@ -1,0 +1,173 @@
+#!/usr/bin/python3
+# -*- coding:utf-8 -*-
+
+# birthday_minder.py / .shl
+#
+# Birthday Minder V1.0 
+# Raspberry PI with 1.3" TFT Adafruit display
+# Author: J. Nolan (totorodad@gmail.com)
+# 9-Sept-2023
+# Release 1.0 (no restriction apply)
+#
+# Pre-requisits:
+#	sudo apt-get update
+# 	sudo apt-get install python3-pip
+#	sudo pip update
+#	sudo apt-get install python3-pil
+#	sudo apt-get install ttf-dejavu
+#	sudo pip install adafruit-circuitpython-rgb-display
+#
+# Copy this program to your /home/pi folder then
+# Add this line to the last line of: /etc/xdg/lxsession/LXDE-pi/autostart
+# @lxterminal --command "/home/pi/birthday_minder/birthday_minder.shl"
+#
+# Make sure to turn on I2C for the display with the
+# raspberry pi configuration tool.
+# It's also a good idea to turn on VNC and SSH after setting up a fresh
+# PI.  Enable Wifi by logging into your local router.
+#
+# Revision History
+# 9-Sept-2023: Modfied from read aqi
+# 28-Sept-2023: Added number of days to next birthday
+
+import psutil
+
+import time
+import subprocess
+from colorsys import hsv_to_rgb
+import board
+from digitalio import DigitalInOut, Direction
+from PIL import Image, ImageDraw, ImageFont
+from adafruit_rgb_display import st7789
+
+from datetime import datetime
+
+from birthdays import read_birthdays, get_birthdays, birthday_list_not_empty
+
+# Create the display
+cs_pin = DigitalInOut(board.CE0)
+dc_pin = DigitalInOut(board.D25)
+reset_pin = DigitalInOut(board.D24)
+BAUDRATE = 24000000
+
+spi = board.SPI()
+disp = st7789.ST7789(
+	spi,
+	height=240,
+	y_offset=80,
+	rotation=180,
+	cs=cs_pin,
+	dc=dc_pin,
+	rst=reset_pin,
+	baudrate=BAUDRATE,
+)
+
+# Turn on the Backlight
+backlight = DigitalInOut(board.D26)
+backlight.switch_to_output()
+backlight.value = True
+
+# Create blank image for drawing.
+# Make sure to create image with mode 'RGB' for color.
+width = disp.width
+height = disp.height
+image = Image.new("RGB", (width, height))
+
+# Get drawing object to draw on image.
+draw = ImageDraw.Draw(image)
+
+# Clear display.
+draw.rectangle((0, 0, width, height), outline=0, fill=(255, 0, 0))
+disp.image(image)
+
+# Get drawing object to draw on image.
+draw = ImageDraw.Draw(image)
+
+# Draw a black filled box to clear the image.
+draw.rectangle((0, 0, width, height), outline=0, fill=0)
+
+udlr_fill = "#00FF00"
+udlr_outline = "#00FFFF"
+button_fill = "#FF00FF"
+button_outline = "#FFFFFF"
+
+fnt = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
+
+#Globals
+count = 1 
+found_marker = 0
+aqi = 0 
+cycles = 0
+
+# clear screen
+def clear_screen():
+	draw.rectangle((0, 0, width, height), outline=0, fill=(0,0,0))
+	disp.image(image)
+
+# convert string to integer (safe version)
+def string2int (str):
+	try:
+		return_value = int(str)
+	except ValueError:
+		return_value = 0 
+
+	return (return_value)
+
+
+# Draw some shapes.
+# First define some constants to allow easy resizing of shapes.
+padding = -2
+top = padding
+bottom = height-padding
+
+# Move left to right keeping track of the current x position for drawing shapes.
+x = 0
+
+# Draw text
+def draw_text (x, y, str_out, font_size):
+	fontA = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', font_size)
+	draw.text((x, y), str_out, font=fontA, fill=(255,255,255))
+
+	# display the image
+	disp.image(image)
+
+def announce_birthdays():
+	#display birthday
+	read_birthdays()
+	if (birthday_list_not_empty()):
+		clear_screen()
+		#draw line #1: Happy Birthday Greeting
+		draw_text (x,top+40,get_birthdays(),30)
+
+		#draw line #2: first name
+		draw_text (x,top+40+1*35,get_birthdays(),20)
+
+		#draw line #3: last name
+		draw_text (x,top+40+2*35,get_birthdays(),20)
+
+		#draw line #4: age
+		draw_text (x,top+40+3*35,get_birthdays(),30)
+
+		#draw line #5: days to next birthday if displaying 'next birthday'
+		draw_text (x,top+40+4*35,get_birthdays(),20)
+
+def show_date ():
+	now = datetime.now()
+	date_text = now.strftime("%m/%d %H:%M:%S") 
+	#draw date and time
+	draw_text (x, top+23,date_text,22)
+	print("Date Time: " + date_text)
+	print(date_text)
+
+def print_cycles():
+	global cycles
+	cycles += 1
+	print("Cycles: " + str (cycles) + " %mem_usage: " + str(psutil.virtual_memory().percent))
+
+while True:
+	clear_screen()
+
+	announce_birthdays()
+	time.sleep(5)
+
+	print_cycles()
